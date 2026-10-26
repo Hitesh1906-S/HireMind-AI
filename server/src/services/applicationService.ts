@@ -6,6 +6,7 @@ import {
 } from '../validations/applicationValidations.js';
 import { UserRoleType, USER_ROLES } from '../constants/roles.js';
 import { JobMatchService } from './jobMatch.service.js';
+import { NotificationService } from './notificationService.js';
 
 export class ApplicationService {
   /**
@@ -14,6 +15,11 @@ export class ApplicationService {
   static async applyForJob(candidateId: string, input: CreateApplicationInput) {
     const job = await prisma.job.findUnique({
       where: { id: input.jobId },
+      include: {
+        recruiter: {
+          select: { id: true, name: true, email: true },
+        },
+      },
     });
 
     if (!job) {
@@ -37,6 +43,12 @@ export class ApplicationService {
     if (existing) {
       throw ApiError.conflict('You have already applied for this job requisition');
     }
+
+    // Fetch candidate details
+    const candidateUser = await prisma.user.findUnique({
+      where: { id: candidateId },
+      select: { id: true, name: true, email: true, phone: true },
+    });
 
     // Optionally update user phone if provided
     if (input.phone) {
@@ -72,6 +84,24 @@ export class ApplicationService {
     JobMatchService.getOrCalculateMatch(input.jobId, candidateId).catch((err) => {
       console.warn('[ApplicationService] Background match calculation deferred:', err.message);
     });
+
+    // Dispatch Candidate & Recruiter Notifications
+    if (candidateUser) {
+      NotificationService.notifyApplicationSubmitted(
+        { id: candidateUser.id, name: candidateUser.name, email: candidateUser.email },
+        { id: job.id, title: job.title },
+        { id: application.id }
+      ).catch((e) => console.warn('[Notification Error]', e));
+
+      if (job.recruiter) {
+        NotificationService.notifyNewApplication(
+          { id: job.recruiter.id, name: job.recruiter.name, email: job.recruiter.email },
+          { name: candidateUser.name, email: candidateUser.email },
+          { id: job.id, title: job.title },
+          { id: application.id }
+        ).catch((e) => console.warn('[Notification Error]', e));
+      }
+    }
 
     return application;
   }
@@ -194,6 +224,17 @@ export class ApplicationService {
         },
       },
     });
+
+    // Notify candidate of status update
+    if (updated.candidate && updated.job && input.status !== application.status) {
+      NotificationService.notifyApplicationStatusChanged(
+        { id: updated.candidate.id, name: updated.candidate.name, email: updated.candidate.email },
+        { id: updated.job.id, title: updated.job.title },
+        application.status,
+        input.status,
+        input.notes || undefined
+      ).catch((e) => console.warn('[Notification Error]', e));
+    }
 
     return updated;
   }

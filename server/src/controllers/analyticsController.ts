@@ -39,6 +39,25 @@ export class AnalyticsController {
   static getRecruiterIntelligence = AnalyticsController.getRecruiterAnalytics;
 
   /**
+   * GET /api/v1/analytics/candidates
+   * Retrieve list of candidate options for comparison selector
+   */
+  static getCandidatesPool = asyncHandler(async (req: Request, res: Response) => {
+    if (!req.user) throw ApiError.unauthorized('Authentication required');
+
+    const recruiterId = req.user.role === USER_ROLES.ADMIN ? undefined : req.user.id;
+    const jobId = req.query.jobId ? String(req.query.jobId) : undefined;
+
+    const candidates = await AnalyticsService.getCandidatePool(recruiterId, jobId);
+
+    return ApiResponse.success({
+      res,
+      message: 'Candidate pool retrieved successfully',
+      data: { candidates },
+    });
+  });
+
+  /**
    * POST /api/v1/analytics/compare
    * Side-by-side comparative analysis of 2 to 4 candidates
    */

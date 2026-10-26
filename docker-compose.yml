@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hiremind-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hiremind}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hiremind_secure_pass_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-hiremind_prod}
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-hiremind} -d ${POSTGRES_DB:-hiremind_prod}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hiremind-network
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: hiremind-server
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 5001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hiremind}:${POSTGRES_PASSWORD:-hiremind_secure_pass_2026}@postgres:5432/${POSTGRES_DB:-hiremind_prod}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-hiremind_production_jwt_secret_key_32_characters_minimum!}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-hiremind_production_refresh_jwt_secret_key_32_chars!}
+      JWT_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-console}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    ports:
+      - '5001:5001'
+    volumes:
+      - server_storage:/app/server/storage_secure
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:5001/health']
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - hiremind-network
+
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+    container_name: hiremind-client
+    restart: always
+    depends_on:
+      server:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: http://server:5001
+    ports:
+      - '3000:3000'
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3000/']
+      interval: 20s
+      timeout: 5s
+      retries: 3
+    networks:
+      - hiremind-network
+
+volumes:
+  postgres_data:
+    driver: local
+  server_storage:
+    driver: local
+
+networks:
+  hiremind-network:
+    driver: bridge

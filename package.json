@@ -17,6 +17,7 @@
     "lint": "npm run lint --workspace=server && npm run lint --workspace=client",
     "db:generate": "npm run db:generate --workspace=server",
     "db:push": "npm run db:push --workspace=server",
+    "db:seed": "npm run db:seed --workspace=server",
     "db:studio": "npm run db:studio --workspace=server",
     "type-check": "npm run type-check --workspace=server && npm run type-check --workspace=client"
   },

@@ -95,3 +95,16 @@ export interface CandidateComparisonResponse {
   } | null;
   candidates: CandidateComparisonItem[];
 }
+
+export interface CandidatePoolItem {
+  candidateId: string;
+  name: string;
+  email: string;
+  avatar?: string | null;
+  headline: string;
+  jobId: string;
+  jobTitle: string;
+  applicationStatus: string;
+  matchScore: number;
+  interviewStatus: string;
+}

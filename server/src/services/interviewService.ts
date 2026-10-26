@@ -16,6 +16,7 @@ import {
 } from '../validations/interviewValidations.js';
 import { getAiQuestionGenerator } from './ai/index.js';
 import { QuestionGenerationInput } from './ai/questionGenerator.interface.js';
+import { NotificationService } from './notificationService.js';
 
 export class InterviewService {
   /**
@@ -321,18 +322,26 @@ export class InterviewService {
       return newInterview;
     });
 
-    // Notify candidate in database
-    await prisma.notification.create({
-      data: {
-        userId: resolvedCandidateId,
-        title: 'New Technical Interview Scheduled',
-        message: `Your ${interviewType.toLowerCase()} interview for "${job.title}" is scheduled for ${new Date(input.scheduledAt).toLocaleDateString()}.`,
-        type: 'INTERVIEW',
-        link: `/dashboard?tab=interviews`,
-      },
-    }).catch((err) => {
-      console.warn('[InterviewService] Notification creation deferred:', err.message);
+    // Notify candidate via in-app & email
+    const candidateUser = await prisma.user.findUnique({
+      where: { id: resolvedCandidateId },
+      select: { id: true, name: true, email: true },
     });
+
+    if (candidateUser) {
+      NotificationService.notifyInterviewScheduled(
+        candidateUser,
+        { id: job.id, title: job.title },
+        {
+          id: interview.id,
+          scheduledAt: input.scheduledAt,
+          durationMins: input.durationMins || 60,
+          chamberRoomId,
+        }
+      ).catch((err) => {
+        console.warn('[InterviewService] Notification creation deferred:', err.message);
+      });
+    }
 
     return this.getInterviewById(interview.id, recruiterId, USER_ROLES.RECRUITER);
   }
@@ -546,6 +555,21 @@ export class InterviewService {
       throw ApiError.forbidden('Unauthorized access to interview session');
     }
 
+    // Auto-generate interview questions if not yet generated
+    if (!interview.questions || interview.questions.length === 0) {
+      try {
+        const generated = await this.generateQuestionsForInterview(
+          interviewId,
+          interview.recruiterId || candidateId,
+          'RECRUITER',
+          false
+        );
+        (interview as any).questions = generated.questions;
+      } catch (err) {
+        console.warn('Auto-generation of questions in getSession skipped:', err);
+      }
+    }
+
     let session = interview.session;
     if (!session) {
       session = await prisma.interviewSession.create({
@@ -739,6 +763,15 @@ export class InterviewService {
         session: true,
         questions: true,
         responses: true,
+        candidate: {
+          select: { id: true, name: true, email: true },
+        },
+        job: {
+          select: { id: true, title: true },
+        },
+        recruiter: {
+          select: { id: true, name: true, email: true },
+        },
       },
     });
 
@@ -804,6 +837,28 @@ export class InterviewService {
         },
       });
     });
+
+    // Dispatch Candidate & Recruiter Interview Completion Notifications
+    if (interview.candidate && interview.job) {
+      NotificationService.notifyInterviewCompleted(
+        interview.candidate,
+        interview.job,
+        { id: interviewId }
+      ).catch((err) => {
+        console.warn('[InterviewService] Notification completion deferred:', err.message);
+      });
+    }
+
+    if (interview.recruiter && interview.candidate && interview.job) {
+      NotificationService.notifyCandidateCompletedInterview(
+        interview.recruiter,
+        { name: interview.candidate.name },
+        interview.job,
+        { id: interviewId }
+      ).catch((err) => {
+        console.warn('[InterviewService] Recruiter completion notification deferred:', err.message);
+      });
+    }
 
     return this.getSession(interviewId, candidateId);
   }

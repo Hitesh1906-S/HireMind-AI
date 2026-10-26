@@ -5,8 +5,13 @@ import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar } from '@/components/ui/avatar';
+import { Input } from '@/components/ui/input';
 import { AnalyticsApi } from '@/lib/api-analytics';
-import { CandidateComparisonItem, CandidateComparisonResponse } from '@/types/analytics';
+import {
+  CandidateComparisonItem,
+  CandidateComparisonResponse,
+  CandidatePoolItem,
+} from '@/types/analytics';
 import { Job } from '@/types/job';
 import { useToast } from '@/context/ToastContext';
 import {
@@ -21,6 +26,9 @@ import {
   Users,
   X,
   Plus,
+  Search,
+  Check,
+  Sparkles,
 } from 'lucide-react';
 
 interface Props {
@@ -44,13 +52,50 @@ export const CandidateComparisonModal: React.FC<Props> = ({
   const [comparisonData, setComparisonData] = useState<CandidateComparisonResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Candidate Pool selection state
+  const [candidatePool, setCandidatePool] = useState<CandidatePoolItem[]>([]);
+  const [isLoadingPool, setIsLoadingPool] = useState(false);
+  const [poolSearchQuery, setPoolSearchQuery] = useState('');
+  const [showPicker, setShowPicker] = useState(false);
+
   useEffect(() => {
-    setCandidateIds(initialCandidateIds);
+    if (initialCandidateIds && initialCandidateIds.length > 0) {
+      setCandidateIds(initialCandidateIds);
+    }
     if (initialJobId) setSelectedJobId(initialJobId);
   }, [initialCandidateIds, initialJobId]);
 
+  // Load candidate pool for selection
+  const loadPool = useCallback(async () => {
+    try {
+      setIsLoadingPool(true);
+      const pool = await AnalyticsApi.getCandidatePool(
+        selectedJobId !== 'ALL' ? selectedJobId : undefined
+      );
+      setCandidatePool(pool);
+      // If no candidateIds provided initially, preselect top 2 candidates
+      if ((!initialCandidateIds || initialCandidateIds.length === 0) && pool.length >= 2) {
+        setCandidateIds([pool[0].candidateId, pool[1].candidateId]);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsLoadingPool(false);
+    }
+  }, [selectedJobId, initialCandidateIds]);
+
+  useEffect(() => {
+    if (isOpen) {
+      loadPool();
+    }
+  }, [isOpen, loadPool]);
+
+  // Fetch comparison
   const fetchComparison = useCallback(async () => {
-    if (!candidateIds || candidateIds.length < 2) return;
+    if (!candidateIds || candidateIds.length < 2) {
+      setComparisonData(null);
+      return;
+    }
     setIsLoading(true);
     try {
       const data = await AnalyticsApi.compareCandidates(
@@ -75,7 +120,27 @@ export const CandidateComparisonModal: React.FC<Props> = ({
     }
   }, [isOpen, candidateIds, selectedJobId, fetchComparison]);
 
+  const handleToggleCandidate = (candId: string) => {
+    if (candidateIds.includes(candId)) {
+      if (candidateIds.length <= 2) {
+        error('At least 2 candidates are required for side-by-side comparison.');
+        return;
+      }
+      setCandidateIds((prev) => prev.filter((id) => id !== candId));
+    } else {
+      if (candidateIds.length >= 4) {
+        error('Maximum 4 candidates can be compared simultaneously.');
+        return;
+      }
+      setCandidateIds((prev) => [...prev, candId]);
+    }
+  };
+
   const handleRemoveCandidate = (candId: string) => {
+    if (candidateIds.length <= 2) {
+      error('At least 2 candidates are required for comparison.');
+      return;
+    }
     setCandidateIds((prev) => prev.filter((id) => id !== candId));
   };
 
@@ -118,6 +183,12 @@ export const CandidateComparisonModal: React.FC<Props> = ({
 
   const candidates = comparisonData?.candidates || [];
 
+  const filteredPool = candidatePool.filter((c) =>
+    c.name.toLowerCase().includes(poolSearchQuery.toLowerCase()) ||
+    c.headline.toLowerCase().includes(poolSearchQuery.toLowerCase()) ||
+    c.jobTitle.toLowerCase().includes(poolSearchQuery.toLowerCase())
+  );
+
   return (
     <Dialog
       isOpen={isOpen}
@@ -129,7 +200,7 @@ export const CandidateComparisonModal: React.FC<Props> = ({
       <div className="space-y-6 pt-2 text-slate-100">
         {/* Controls Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-xs">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <span className="text-slate-400 font-semibold flex items-center gap-1.5">
               <Briefcase className="h-3.5 w-3.5 text-purple-400" />
               Target Requisition:
@@ -146,6 +217,16 @@ export const CandidateComparisonModal: React.FC<Props> = ({
                 </option>
               ))}
             </select>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowPicker(!showPicker)}
+              className="h-7 text-[11px] gap-1 border-purple-500/30 text-purple-300 hover:bg-purple-500/10"
+            >
+              <Users className="h-3 w-3" />
+              {showPicker ? 'Hide Candidate Picker' : `Select Candidates (${candidateIds.length}/4)`}
+            </Button>
           </div>
 
           <div className="flex items-center gap-2">
@@ -161,13 +242,84 @@ export const CandidateComparisonModal: React.FC<Props> = ({
           </div>
         </div>
 
+        {/* CANDIDATE SELECTOR DRAWER */}
+        {(showPicker || candidateIds.length < 2) && (
+          <div className="p-4 rounded-xl bg-slate-900/80 border border-purple-500/30 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5 text-purple-400" />
+                  Select Candidates to Compare (Choose 2 to 4)
+                </h4>
+                <p className="text-[11px] text-slate-400">
+                  Select candidates from your pool to populate into the side-by-side evaluation table.
+                </p>
+              </div>
+              <div className="relative w-full sm:w-56">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
+                <Input
+                  placeholder="Filter candidate name..."
+                  value={poolSearchQuery}
+                  onChange={(e) => setPoolSearchQuery(e.target.value)}
+                  className="h-8 pl-8 text-xs bg-slate-950 border-slate-800"
+                />
+              </div>
+            </div>
+
+            {isLoadingPool ? (
+              <div className="py-6 text-center text-xs text-slate-400">Loading candidate pool...</div>
+            ) : filteredPool.length === 0 ? (
+              <div className="py-6 text-center text-xs text-slate-500">No candidates found for this requisition.</div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-48 overflow-y-auto pr-1">
+                {filteredPool.map((c) => {
+                  const isSelected = candidateIds.includes(c.candidateId);
+                  return (
+                    <div
+                      key={c.candidateId}
+                      onClick={() => handleToggleCandidate(c.candidateId)}
+                      className={`p-2.5 rounded-lg border text-xs cursor-pointer transition-all flex items-center justify-between gap-2 ${
+                        isSelected
+                          ? 'bg-purple-950/40 border-purple-500/60 shadow-sm'
+                          : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        <Avatar name={c.name} size="sm" />
+                        <div className="truncate">
+                          <p className="font-bold text-white text-[11px] truncate">{c.name}</p>
+                          <p className="text-[10px] text-slate-400 truncate">{c.jobTitle}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[10px] font-mono text-emerald-400 font-semibold">
+                          {c.matchScore}%
+                        </span>
+                        <div
+                          className={`w-4 h-4 rounded border flex items-center justify-center ${
+                            isSelected
+                              ? 'bg-purple-600 border-purple-500 text-white'
+                              : 'border-slate-700 bg-slate-900'
+                          }`}
+                        >
+                          {isSelected && <Check className="h-3 w-3" />}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Warning if fewer than 2 candidates selected */}
-        {candidateIds.length < 2 && (
+        {candidateIds.length < 2 && !isLoading && (
           <div className="p-8 text-center rounded-2xl bg-slate-900/40 border border-slate-800 space-y-2">
             <Users className="h-8 w-8 text-slate-500 mx-auto" />
             <p className="text-sm font-semibold text-white">Select At Least 2 Candidates</p>
             <p className="text-xs text-slate-400 max-w-sm mx-auto">
-              Pick 2 to 4 candidates from the talent pool to evaluate side-by-side in this matrix.
+              Please select at least 2 candidates using the picker above to generate the comparative rubric matrix.
             </p>
           </div>
         )}
@@ -189,7 +341,7 @@ export const CandidateComparisonModal: React.FC<Props> = ({
               <thead>
                 <tr>
                   <th className="p-3 bg-slate-950/80 border border-slate-800 text-slate-400 font-semibold w-48 sticky left-0 z-10">
-                    Candidate Profile
+                    Evaluation Dimension
                   </th>
                   {candidates.map((cand) => (
                     <th
@@ -229,10 +381,10 @@ export const CandidateComparisonModal: React.FC<Props> = ({
                 </tr>
               </thead>
               <tbody>
-                {/* Overall Score */}
+                {/* 1. Overall Score */}
                 <tr className="bg-slate-950/40">
                   <td className="p-3 border border-slate-800 font-semibold text-slate-300 sticky left-0 bg-slate-950/90">
-                    Overall Interview Score
+                    Overall Score
                   </td>
                   {candidates.map((cand) => (
                     <td key={cand.candidateId} className="p-3 border border-slate-800">
@@ -251,10 +403,10 @@ export const CandidateComparisonModal: React.FC<Props> = ({
                   ))}
                 </tr>
 
-                {/* Resume Match Score */}
+                {/* 2. Resume Score */}
                 <tr>
                   <td className="p-3 border border-slate-800 font-semibold text-slate-300 sticky left-0 bg-slate-950/90">
-                    Resume Compatibility
+                    Resume Score
                   </td>
                   {candidates.map((cand) => (
                     <td key={cand.candidateId} className="p-3 border border-slate-800">
@@ -270,10 +422,10 @@ export const CandidateComparisonModal: React.FC<Props> = ({
                   ))}
                 </tr>
 
-                {/* Coding Performance */}
+                {/* 3. Coding Score */}
                 <tr className="bg-slate-950/40">
                   <td className="p-3 border border-slate-800 font-semibold text-slate-300 sticky left-0 bg-slate-950/90">
-                    Coding Performance
+                    Coding Score
                   </td>
                   {candidates.map((cand) => (
                     <td key={cand.candidateId} className="p-3 border border-slate-800">
@@ -290,10 +442,10 @@ export const CandidateComparisonModal: React.FC<Props> = ({
                   ))}
                 </tr>
 
-                {/* Technical Knowledge */}
+                {/* 4. Technical Score */}
                 <tr>
                   <td className="p-3 border border-slate-800 font-semibold text-slate-300 sticky left-0 bg-slate-950/90">
-                    Technical Knowledge
+                    Technical Score
                   </td>
                   {candidates.map((cand) => (
                     <td key={cand.candidateId} className="p-3 border border-slate-800">
@@ -304,10 +456,10 @@ export const CandidateComparisonModal: React.FC<Props> = ({
                   ))}
                 </tr>
 
-                {/* Communication */}
+                {/* 5. Communication Score */}
                 <tr className="bg-slate-950/40">
                   <td className="p-3 border border-slate-800 font-semibold text-slate-300 sticky left-0 bg-slate-950/90">
-                    Communication Clarity
+                    Communication Score
                   </td>
                   {candidates.map((cand) => (
                     <td key={cand.candidateId} className="p-3 border border-slate-800">
@@ -324,7 +476,7 @@ export const CandidateComparisonModal: React.FC<Props> = ({
                   ))}
                 </tr>
 
-                {/* Matched Skills */}
+                {/* 6. Matched Skills */}
                 <tr>
                   <td className="p-3 border border-slate-800 font-semibold text-slate-300 sticky left-0 bg-slate-950/90 align-top">
                     Matched Skills
@@ -349,7 +501,7 @@ export const CandidateComparisonModal: React.FC<Props> = ({
                   ))}
                 </tr>
 
-                {/* Missing Skills */}
+                {/* 7. Missing Skills */}
                 <tr className="bg-slate-950/40">
                   <td className="p-3 border border-slate-800 font-semibold text-slate-300 sticky left-0 bg-slate-950/90 align-top">
                     Missing Skills
@@ -374,7 +526,7 @@ export const CandidateComparisonModal: React.FC<Props> = ({
                   ))}
                 </tr>
 
-                {/* Interview Status */}
+                {/* 8. Interview Status */}
                 <tr>
                   <td className="p-3 border border-slate-800 font-semibold text-slate-300 sticky left-0 bg-slate-950/90">
                     Interview Status
@@ -396,7 +548,7 @@ export const CandidateComparisonModal: React.FC<Props> = ({
                   ))}
                 </tr>
 
-                {/* Integrity Signals */}
+                {/* 9. Integrity Signals */}
                 <tr className="bg-slate-950/40">
                   <td className="p-3 border border-slate-800 font-semibold text-slate-300 sticky left-0 bg-slate-950/90">
                     Integrity Signals
@@ -411,6 +563,18 @@ export const CandidateComparisonModal: React.FC<Props> = ({
                         <span className="text-[10px] text-slate-400">
                           ({cand.integritySignals.cleanTimePercentage}% clean)
                         </span>
+                        <Badge
+                          variant={
+                            cand.integritySignals.integrityRating === 'HIGH'
+                              ? 'success'
+                              : cand.integritySignals.integrityRating === 'MODERATE'
+                              ? 'warning'
+                              : 'destructive'
+                          }
+                          className="text-[9px]"
+                        >
+                          {cand.integritySignals.integrityRating}
+                        </Badge>
                       </div>
                     </td>
                   ))}

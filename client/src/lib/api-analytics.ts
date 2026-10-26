@@ -3,6 +3,7 @@ import {
   RecruiterIntelligenceData,
   RecruiterIntelligenceFilters,
   CandidateComparisonResponse,
+  CandidatePoolItem,
 } from '@/types/analytics';
 
 export class AnalyticsApi {
@@ -35,6 +36,20 @@ export class AnalyticsApi {
   }
 
   /**
+   * Get candidate pool for comparison selector
+   */
+  static async getCandidatePool(jobId?: string): Promise<CandidatePoolItem[]> {
+    const params = new URLSearchParams();
+    if (jobId && jobId !== 'ALL') params.append('jobId', jobId);
+    const queryString = params.toString();
+    const res = await apiClient.get<{
+      success: boolean;
+      data: { candidates: CandidatePoolItem[] };
+    }>(`/analytics/candidates${queryString ? `?${queryString}` : ''}`);
+    return res.data.data.candidates;
+  }
+
+  /**
    * Compare 2 to 4 candidates side-by-side
    */
   static async compareCandidates(
@@ -51,3 +66,4 @@ export class AnalyticsApi {
     return res.data.data;
   }
 }
+

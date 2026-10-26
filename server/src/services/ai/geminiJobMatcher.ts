@@ -9,6 +9,7 @@ import {
   jobMatchResultSchema,
 } from '../../validations/jobMatch.schema.js';
 import { env } from '../../config/env.js';
+import { logger } from '../../utils/logger.js';
 import { MockJobMatcher } from './mockJobMatcher.js';
 
 export class GeminiJobMatcher implements IAiJobMatcher {
@@ -126,11 +127,11 @@ Return ONLY valid JSON matching this schema.`;
       const validated = jobMatchResultSchema.parse(parsedJson);
       return validated;
     } catch (error: any) {
-      console.error(
+      logger.error(
         '[GeminiJobMatcher] Error calling Gemini API or validating output:',
         error?.message || error
       );
-      console.log('[GeminiJobMatcher] Falling back to intelligent mock job matcher.');
+      logger.info('[GeminiJobMatcher] Falling back to intelligent job matcher.');
       return this.fallbackMatcher.matchCandidateToJob(job, candidate);
     }
   }

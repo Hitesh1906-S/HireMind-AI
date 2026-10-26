@@ -21,6 +21,15 @@ const envSchema = z.object({
   AI_MODEL: z.string().default('gemini-1.5-flash'),
   CODE_EXECUTION_PROVIDER: z.string().default('mock'),
   STT_PROVIDER: z.enum(['mock', 'gemini', 'whisper']).default('mock'),
+  EMAIL_PROVIDER: z.enum(['console', 'smtp', 'sendgrid', 'resend', 'mock']).default('console'),
+  EMAIL_FROM: z.string().default('HireMind AI <no-reply@hiremind.ai>'),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.string().optional().transform((val) => (val ? Number(val) : 587)),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_SECURE: z.string().optional().transform((val) => val === 'true'),
+  SENDGRID_API_KEY: z.string().optional(),
+  RESEND_API_KEY: z.string().optional(),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

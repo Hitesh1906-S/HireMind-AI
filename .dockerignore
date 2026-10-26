@@ -1,0 +1,15 @@
+node_modules
+.next
+dist
+.git
+.npm-cache
+.gemini
+.agent
+.agents
+.gsd
+*.log
+.env
+.env.local
+.env.production
+storage_secure
+scratch

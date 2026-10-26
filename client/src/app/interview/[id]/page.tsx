@@ -379,8 +379,10 @@ export default function CandidateInterviewPage() {
     );
   }
 
-  const { interview, session, questions, responses } = sessionData;
-  const currentQuestion = questions[currentIndex] || questions[0];
+  const { interview, session, questions = [], responses = [] } = sessionData;
+  const currentQuestion = questions && questions.length > 0
+    ? (questions[currentIndex] || questions[0])
+    : null;
   const isCompleted = session.status === 'COMPLETED';
 
   // Completion View
@@ -427,6 +429,38 @@ export default function CandidateInterviewPage() {
             className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 text-sm rounded-xl shadow-lg shadow-indigo-600/25"
           >
             Return to Candidate Dashboard
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Guard against missing / empty questions
+  if (!currentQuestion || questions.length === 0) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-white text-center space-y-5">
+        <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-xl shadow-indigo-500/20">
+          <Cpu className="w-8 h-8 animate-pulse" />
+        </div>
+        <div className="space-y-1">
+          <h2 className="text-xl font-bold tracking-tight">Interview Chamber Preparing</h2>
+          <p className="text-sm text-slate-400 max-w-md">
+            The technical questions are being prepared for <span className="text-indigo-300 font-semibold">{interview.title}</span>.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button
+            onClick={() => initializeSession()}
+            className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-indigo-600/25"
+          >
+            Connect Chamber
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => router.push('/dashboard?tab=interviews')}
+            className="border-slate-800 text-slate-300 hover:bg-slate-900 text-xs px-5 py-2.5 rounded-xl"
+          >
+            Return to Dashboard
           </Button>
         </div>
       </div>
@@ -546,25 +580,25 @@ export default function CandidateInterviewPage() {
             <div className="space-y-1.5">
               <div className="flex items-center space-x-2">
                 <span className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider">
-                  {currentQuestion.category}
+                  {currentQuestion?.category || 'Technical'}
                 </span>
                 <span className="text-slate-600">•</span>
                 <span className="text-[11px] font-mono text-slate-400">
-                  {currentQuestion.type}
+                  {currentQuestion?.type || 'MIXED'}
                 </span>
               </div>
               <h2 className="text-lg font-bold text-white tracking-tight">
-                {currentQuestion.title}
+                {currentQuestion?.title || 'Technical Assessment Question'}
               </h2>
             </div>
 
             {/* Description */}
             <div className="text-xs text-slate-300 leading-relaxed whitespace-pre-line p-4 rounded-xl bg-slate-950/60 border border-slate-800">
-              {currentQuestion.description}
+              {currentQuestion?.description || 'Please complete the question prompt.'}
             </div>
 
             {/* Test Cases / Sample Inputs */}
-            {currentQuestion.testCases && currentQuestion.testCases.length > 0 && (
+            {currentQuestion?.testCases && currentQuestion.testCases.length > 0 && (
               <div className="space-y-2">
                 <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center space-x-1.5">
                   <Flame className="w-3.5 h-3.5 text-amber-400" />

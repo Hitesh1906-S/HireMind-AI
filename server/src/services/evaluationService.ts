@@ -10,6 +10,7 @@ import {
   recruiterOverrideSchema,
 } from '../validations/evaluationValidations.js';
 import { ProctoringService } from './proctoringService.js';
+import { NotificationService } from './notificationService.js';
 
 export class EvaluationService {
   public static readonly DECISION_SUPPORT_DISCLAIMER =
@@ -194,6 +195,32 @@ export class EvaluationService {
         decisionSupportDisclaimer: this.DECISION_SUPPORT_DISCLAIMER,
       },
     });
+
+    // Dispatch Recruiter & Candidate Notifications
+    const recruiterUser = interview.recruiterId
+      ? await prisma.user.findUnique({
+          where: { id: interview.recruiterId },
+          select: { id: true, name: true, email: true },
+        })
+      : null;
+
+    if (recruiterUser) {
+      NotificationService.notifyReportReady(
+        recruiterUser,
+        { name: interview.candidate.name },
+        { id: interview.job.id, title: interview.job.title },
+        { id: interviewId },
+        Math.round(savedEvaluation.overallScore),
+        savedEvaluation.recommendation
+      ).catch((e) => console.warn('[Notification Error]', e));
+    }
+
+    NotificationService.notifyResultsAvailable(
+      { id: interview.candidate.id, name: interview.candidate.name, email: interview.candidate.email },
+      { id: interview.job.id, title: interview.job.title },
+      { id: interviewId },
+      Math.round(savedEvaluation.overallScore)
+    ).catch((e) => console.warn('[Notification Error]', e));
 
     return savedEvaluation;
   }

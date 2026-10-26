@@ -565,7 +565,7 @@ model Notification {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   title     String
   message   String
-  type      String   @default("INFO") // INFO, SUCCESS, WARNING, INTERVIEW, APPLICATION
+  type      String   @default("INFO") // INFO, SUCCESS, WARNING, INTERVIEW, APPLICATION, etc.
   read      Boolean  @default(false)
   link      String?
   createdAt DateTime @default(now())

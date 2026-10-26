@@ -1,5 +1,6 @@
 import { prisma } from '../config/prisma.js';
-import { ApplicationStatus, Prisma } from '@prisma/client';
+import { ApplicationStatus } from '@prisma/client';
+import { NotificationService } from './notificationService.js';
 
 export interface RankingWeights {
   resumeWeight: number; // e.g. 20 (20%)
@@ -409,12 +410,67 @@ export class RankingService {
     } else if (action === 'MOVE_TO_INTERVIEW') {
       nextStatus = ApplicationStatus.INTERVIEW;
       if (notes) appendedNotes = appendedNotes ? `${appendedNotes}\n[Interview Note]: ${notes}` : `[Interview Note]: ${notes}`;
+
+      // Check if candidate already has an interview scheduled for this job
+      const existingInterview = await prisma.interview.findFirst({
+        where: {
+          candidateId: application.candidateId,
+          jobId: application.jobId,
+        },
+      });
+
+      if (!existingInterview) {
+        const interviewTitle = `Technical Round - ${application.job.title}`;
+        const chamberId = `chamber-${Date.now().toString(36)}`;
+        const recId = recruiterId || application.job.recruiterId;
+
+        await prisma.interview.create({
+          data: {
+            title: interviewTitle,
+            type: 'TECHNICAL',
+            status: 'SCHEDULED',
+            scheduledAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000), // In 2 days
+            durationMins: 60,
+            meetingLink: `https://hiremind.ai/chamber/${chamberId}`,
+            chamberRoomId: chamberId,
+            notes: notes || 'Advanced to technical interview from candidate ranking engine.',
+            jobId: application.jobId,
+            candidateId: application.candidateId,
+            recruiterId: recId,
+            applicationId: application.id,
+          },
+        }).catch((err) => {
+          console.warn('[RankingService] Failed to auto-create interview record:', err.message);
+        });
+      }
     } else if (action === 'ADD_NOTES') {
       if (notes) {
         appendedNotes = appendedNotes
           ? `${appendedNotes}\n[Recruiter Note ${new Date().toISOString().split('T')[0]}]: ${notes}`
           : `[Recruiter Note ${new Date().toISOString().split('T')[0]}]: ${notes}`;
       }
+    }
+
+    // Create Candidate Notification
+    const notificationTitles: Record<string, string> = {
+      SHORTLIST: 'Application Shortlisted',
+      REJECT: 'Application Update',
+      MOVE_TO_INTERVIEW: 'Invited to Technical Interview',
+    };
+    if (notificationTitles[action]) {
+      await prisma.notification.create({
+        data: {
+          userId: application.candidateId,
+          title: notificationTitles[action],
+          message:
+            action === 'MOVE_TO_INTERVIEW'
+              ? `You have been advanced to the interview stage for ${application.job.title}.`
+              : action === 'SHORTLIST'
+              ? `Your application for ${application.job.title} has been shortlisted!`
+              : `Your application status for ${application.job.title} has been updated.`,
+          type: action === 'MOVE_TO_INTERVIEW' ? 'INTERVIEW' : 'APPLICATION',
+        },
+      }).catch(() => {});
     }
 
     const updated = await prisma.application.update({
@@ -433,6 +489,16 @@ export class RankingService {
         },
       },
     });
+
+    if (nextStatus !== application.status && updated.candidate) {
+      NotificationService.notifyApplicationStatusChanged(
+        { id: updated.candidate.id, name: updated.candidate.name, email: updated.candidate.email },
+        { id: application.job.id, title: application.job.title },
+        application.status,
+        nextStatus,
+        notes
+      ).catch(() => {});
+    }
 
     return {
       success: true,

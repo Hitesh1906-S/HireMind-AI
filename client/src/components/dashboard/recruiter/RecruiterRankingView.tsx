@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Trophy,
   Sliders,
@@ -21,6 +21,7 @@ import {
   UserCheck,
   ArrowUpDown,
   ExternalLink,
+  Download,
 } from 'lucide-react';
 import { RankingApi } from '@/lib/api-ranking';
 import { JobApi } from '@/lib/api-jobs';
@@ -35,6 +36,7 @@ import { Job } from '@/types/job';
 import { useToast } from '@/context/ToastContext';
 import { Avatar } from '@/components/ui/avatar';
 import { Dialog } from '@/components/ui/dialog';
+import { CandidateReportModal } from './CandidateReportModal';
 
 interface Props {
   initialJobId?: string;
@@ -72,6 +74,11 @@ export const RecruiterRankingView: React.FC<Props> = ({
   const [notesInput, setNotesInput] = useState('');
   const [isSubmittingNotes, setIsSubmittingNotes] = useState(false);
 
+  // Candidate Report modal state
+  const [selectedReportCandidate, setSelectedReportCandidate] =
+    useState<CandidateRankRecord | null>(null);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+
   // Action execution state
   const [actionInProgressId, setActionInProgressId] = useState<string | null>(null);
 
@@ -104,7 +111,15 @@ export const RecruiterRankingView: React.FC<Props> = ({
         const data = await RankingApi.getJobRankings(jobId, currentWeights);
         setRankingData(data);
         if (data.weights) {
-          setWeights(data.weights);
+          setWeights((prev) => {
+            const hasChanged =
+              prev.resumeWeight !== data.weights.resumeWeight ||
+              prev.codingWeight !== data.weights.codingWeight ||
+              prev.technicalWeight !== data.weights.technicalWeight ||
+              prev.communicationWeight !== data.weights.communicationWeight ||
+              prev.otherWeight !== data.weights.otherWeight;
+            return hasChanged ? data.weights : prev;
+          });
         }
       } catch (err: any) {
         error(err.message || 'Failed to fetch candidate rankings.');
@@ -115,11 +130,14 @@ export const RecruiterRankingView: React.FC<Props> = ({
     [error]
   );
 
+  const weightsRef = useRef(weights);
+  weightsRef.current = weights;
+
   useEffect(() => {
     if (selectedJobId) {
-      fetchRankings(selectedJobId, weights);
+      fetchRankings(selectedJobId, weightsRef.current);
     }
-  }, [selectedJobId, fetchRankings, weights]);
+  }, [selectedJobId, fetchRankings]);
 
   // Handle Weight Slider Changes
   const handleWeightChange = (key: keyof RankingWeights, value: number) => {
@@ -680,7 +698,12 @@ export const RecruiterRankingView: React.FC<Props> = ({
 
                         {/* Move to Interview */}
                         <button
-                          onClick={() => handleExecuteAction(cand.applicationId, 'MOVE_TO_INTERVIEW')}
+                          onClick={() => {
+                            handleExecuteAction(cand.applicationId, 'MOVE_TO_INTERVIEW');
+                            if (onNavigateToInterview) {
+                              onNavigateToInterview(cand.candidateId, selectedJobId);
+                            }
+                          }}
                           disabled={actionInProgressId === cand.applicationId}
                           className="p-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 hover:bg-indigo-600 hover:text-white hover:border-indigo-500 text-xs transition-all"
                           title="Move Candidate to Interview"
@@ -712,6 +735,18 @@ export const RecruiterRankingView: React.FC<Props> = ({
                           title="View / Add Recruiter Notes"
                         >
                           <FileText className="h-4 w-4" />
+                        </button>
+
+                        {/* Download / View 15-Section Evaluation Report */}
+                        <button
+                          onClick={() => {
+                            setSelectedReportCandidate(cand);
+                            setIsReportModalOpen(true);
+                          }}
+                          className="p-1.5 rounded-lg bg-indigo-950/60 text-indigo-300 border border-indigo-700/60 hover:bg-indigo-600 hover:text-white hover:border-indigo-500 text-xs transition-all"
+                          title="View 15-Section Evaluation Dossier & Download PDF"
+                        >
+                          <Download className="h-4 w-4" />
                         </button>
                       </div>
                     </td>
@@ -840,6 +875,15 @@ export const RecruiterRankingView: React.FC<Props> = ({
           </div>
         </Dialog>
       )}
+
+      {/* Candidate 15-Section Evaluation Report Dossier Modal */}
+      <CandidateReportModal
+        interviewId={selectedReportCandidate?.interviewId}
+        applicationId={selectedReportCandidate?.applicationId}
+        candidateName={selectedReportCandidate?.name}
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+      />
     </div>
   );
 };

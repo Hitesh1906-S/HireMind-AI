@@ -9,6 +9,7 @@ router.use(authenticate);
 // Recruiter Intelligence & Analytics
 router.get('/recruiter', AnalyticsController.getRecruiterAnalytics);
 router.get('/intelligence', AnalyticsController.getRecruiterIntelligence);
+router.get('/candidates', AnalyticsController.getCandidatesPool);
 router.post('/compare', AnalyticsController.compareCandidates);
 
 // Candidate & Admin Analytics

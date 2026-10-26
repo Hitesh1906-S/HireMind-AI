@@ -10,14 +10,16 @@ import {
   changePasswordSchema,
 } from '../validations/authValidations.js';
 
+import { authLimiter } from '../middlewares/rateLimiter.js';
+
 const router = Router();
 
-// Public routes
-router.post('/register', validateRequest(registerSchema), AuthController.register);
-router.post('/login', validateRequest(loginSchema), AuthController.login);
+// Public routes with brute-force protection
+router.post('/register', authLimiter, validateRequest(registerSchema), AuthController.register);
+router.post('/login', authLimiter, validateRequest(loginSchema), AuthController.login);
 router.post('/refresh', AuthController.refreshToken);
-router.post('/forgot-password', validateRequest(forgotPasswordSchema), AuthController.forgotPassword);
-router.post('/reset-password', validateRequest(resetPasswordSchema), AuthController.resetPassword);
+router.post('/forgot-password', authLimiter, validateRequest(forgotPasswordSchema), AuthController.forgotPassword);
+router.post('/reset-password', authLimiter, validateRequest(resetPasswordSchema), AuthController.resetPassword);
 
 // Authenticated routes
 router.get('/me', authenticate, AuthController.getMe);

@@ -1,7 +1,6 @@
 import { prisma } from '../config/prisma.js';
 import { ApiError } from '../utils/apiError.js';
 import {
-  RecordProctoringEventInput,
   ProctoringEventType,
 } from '../validations/proctoringValidations.js';
 
@@ -89,7 +88,7 @@ export class ProctoringService {
    */
   static async getInterviewTimeline(
     interviewId: string,
-    userId: string
+    _userId: string
   ): Promise<ProctoringTimelineSummary> {
     const interview = await prisma.interview.findUnique({
       where: { id: interviewId },
